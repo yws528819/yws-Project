@@ -5,16 +5,17 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
+import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.Vector;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 
 public class Server {
 
-    private ServerSocket server;
+    private ServerSocket server;//服务端socket
+
+    private Config config;
 
     private ExecutorService threadPool;//线程池
 
@@ -23,8 +24,12 @@ public class Server {
     private Vector<PrintWriter> allOut;//存放所有客户端输出流的集合
 
 
-    public Server() {
-
+    public Server() throws IOException {
+        config = new Config("com/yws/server_config.properties");
+        server = new ServerSocket(config.getIntValue("port"));//端口
+        threadPool = Executors.newCachedThreadPool();//线程池
+        messageQue = new LinkedBlockingDeque<String>();//双向阻塞队列
+        allOut = new Vector<>();
     }
 
     /**
@@ -82,7 +87,7 @@ public class Server {
          * 所以迭代元素的操作要与增删元素的操作互斥!
          */
         for (PrintWriter printWriter : allOut) {
-            printWriter.print(message);
+            printWriter.println(message);
         }
     }
 
@@ -100,9 +105,12 @@ public class Server {
 
         @Override
         public void run() {
-
+            PrintWriter out = null;
+            InetAddress inetAddress = client.getInetAddress();
             try {
-                PrintWriter out = new PrintWriter(client.getOutputStream(), true);
+                System.out.println("客户端IP：" + inetAddress.getHostAddress() + ",主机名：" + inetAddress.getHostName());
+
+                out = new PrintWriter(client.getOutputStream(), true);
                 addOut(out);
 
                 BufferedReader br = new BufferedReader(new InputStreamReader(client.getInputStream()));
@@ -121,7 +129,13 @@ public class Server {
             } catch (IOException e) {
                 e.printStackTrace();
             } finally {
-
+                removeOut(out);//移除输出流
+                System.out.println(inetAddress.getHostAddress() + "离线了，当前在线人数：" + allOut.size());
+                try {
+                    client.close();//关闭socket，输入流和输出流也会同时关闭
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
             }
 
         }
@@ -149,5 +163,9 @@ public class Server {
         }
     }
 
+    public static void main(String[] args) throws IOException {
+        Server server = new Server();
+        server.start();
+    }
 
 }
